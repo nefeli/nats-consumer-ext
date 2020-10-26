@@ -10,6 +10,8 @@ import (
 	"github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/plugins/parsers"
+	"github.com/influxdata/telegraf/plugins/serializers"
+	"github.com/influxdata/telegraf/plugins/serializers/influx"
 	"github.com/nats-io/nats.go"
 )
 
@@ -41,6 +43,14 @@ type natsConsumer struct {
 	Password    string         `toml:"password"`
 	Credentials string         `toml:"credentials"`
 
+	NameOverride   string   `toml:"name_override"`
+	DataFormat     string   `toml:"data_format"`
+	TagKeys        []string `toml:"tag_keys"`
+	JsonQuery      string   `toml:"json_query"`
+	JsonTimeFormat string   `toml:"json_time_format"`
+	JsonTimeKey    string   `toml:"json_time_key"`
+	JsonNameKey    string   `toml:"json_name_key"`
+
 	tls.ClientConfig
 
 	Log telegraf.Logger
@@ -57,7 +67,10 @@ type natsConsumer struct {
 	conn *nats.Conn
 	subs []*nats.Subscription
 
-	parser parsers.Parser
+	parserConfig *parsers.Config
+	parser       parsers.Parser
+	serializer   serializers.Serializer
+
 	// channel for all incoming NATS messages
 	in chan *nats.Msg
 	// channel for all NATS read errors
@@ -69,15 +82,14 @@ type natsConsumer struct {
 
 var sampleConfig = `
   ## urls of NATS servers
-  servers = ["nats://localhost:4222"]
+  servers = ["tls://localhost:4222"]
 
   ## subject(s) to consume
-  subjects = ["telegraf.*.control.resource.*"]
+  subjects = ["nxr.*.telemetry"]
 
   ## tags from subjects. map of (tagname, index of the token)
-  # e.g., For subject "telegraf.us.control.resource.memory", below rule generates
-  # two tags, "country"="us","resourcetype"="memory"
-  subject_tags = {"country": 1, "resourcetype": 4}
+  # e.g., For subject "nxr.us.telemetry", below rule generates a tag, "country=us"
+  subject_tags = {"country": 1}
 
   ## name a queue group
   queue_group = "telegraf_consumers"
@@ -87,13 +99,13 @@ var sampleConfig = `
   # password = ""
 
   ## Optional NATS 2.0 and NATS NGS compatible user credentials
-  # credentials = "/etc/telegraf/nats.creds"
+  credentials = "/etc/telegraf/local-dev.creds"
 
   ## Use Transport Layer Security
-  # secure = false
+  secure = true
 
   ## Optional TLS Config
-  # tls_ca = "/etc/telegraf/ca.pem"
+  tls_ca = "/etc/telegraf/nefeli-root.pem"
   # tls_cert = "/etc/telegraf/cert.pem"
   # tls_key = "/etc/telegraf/key.pem"
   ## Use TLS but skip chain & host verification
@@ -139,6 +151,21 @@ func (n *natsConsumer) natsErrHandler(c *nats.Conn, s *nats.Subscription, e erro
 	default:
 		return
 	}
+}
+
+func (n *natsConsumer) Init() (err error) {
+	n.serializer = influx.NewSerializer()
+	n.parserConfig = &parsers.Config{
+		DataFormat:     n.DataFormat,
+		TagKeys:        n.TagKeys,
+		JSONNameKey:    n.JsonNameKey,
+		JSONQuery:      n.JsonQuery,
+		JSONTimeFormat: n.JsonTimeFormat,
+		JSONTimeKey:    n.JsonTimeKey,
+	}
+
+	n.parser, err = parsers.NewParser(n.parserConfig)
+	return
 }
 
 // Start the nats consumer. Caller must call *natsConsumer.Stop() to clean up.
@@ -252,10 +279,17 @@ func (n *natsConsumer) receiver(ctx context.Context) {
 					}
 					for _, metric := range metrics {
 						metric.AddTag(tagName, subjects[subjectIdx])
+						metric.SetName(n.NameOverride)
 					}
 				}
 
-				n.acc.AddTrackingMetricGroup(metrics)
+				for _, metric := range metrics {
+					out, err := n.serializer.Serialize(metric)
+					if err != nil {
+						continue
+					}
+					fmt.Printf("%s", out)
+				}
 			}
 		}
 	}
