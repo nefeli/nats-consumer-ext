@@ -16,6 +16,11 @@ instances of telegraf can read from a NATS cluster in parallel.
   ## subject(s) to consume
   subjects = ["telegraf"]
 
+  ## tags from subjects. map of (tagname, index of the token)
+  # e.g., For subject "telegraf.us.control.resource.memory", below rule generates
+  # two tags, "country"="us","resourcetype"="memory"
+  subject_tags = {"country": 1, "resourcetype": 4}
+
   ## name a queue group
   queue_group = "telegraf_consumers"
 

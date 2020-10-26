@@ -32,13 +32,14 @@ func (e natsError) Error() string {
 }
 
 type natsConsumer struct {
-	QueueGroup  string   `toml:"queue_group"`
-	Subjects    []string `toml:"subjects"`
-	Servers     []string `toml:"servers"`
-	Secure      bool     `toml:"secure"`
-	Username    string   `toml:"username"`
-	Password    string   `toml:"password"`
-	Credentials string   `toml:"credentials"`
+	QueueGroup  string         `toml:"queue_group"`
+	Subjects    []string       `toml:"subjects"`
+	SubjectTags map[string]int `toml:"subject_tags"`
+	Servers     []string       `toml:"servers"`
+	Secure      bool           `toml:"secure"`
+	Username    string         `toml:"username"`
+	Password    string         `toml:"password"`
+	Credentials string         `toml:"credentials"`
 
 	tls.ClientConfig
 
@@ -71,7 +72,12 @@ var sampleConfig = `
   servers = ["nats://localhost:4222"]
 
   ## subject(s) to consume
-  subjects = ["telegraf"]
+  subjects = ["telegraf.*.control.resource.*"]
+
+  ## tags from subjects. map of (tagname, index of the token)
+  # e.g., For subject "telegraf.us.control.resource.memory", below rule generates
+  # two tags, "country"="us","resourcetype"="memory"
+  subject_tags = {"country": 1, "resourcetype": 4}
 
   ## name a queue group
   queue_group = "telegraf_consumers"
@@ -237,6 +243,16 @@ func (n *natsConsumer) receiver(ctx context.Context) {
 					n.Log.Errorf("Subject: %s, error: %s", msg.Subject, err.Error())
 					<-sem
 					continue
+				}
+
+				subjects := strings.Split(msg.Subject, ".")
+				for tagName, subjectIdx := range n.SubjectTags {
+					if subjectIdx >= len(subjects) {
+						continue
+					}
+					for _, metric := range metrics {
+						metric.AddTag(tagName, subjects[subjectIdx])
+					}
 				}
 
 				n.acc.AddTrackingMetricGroup(metrics)
