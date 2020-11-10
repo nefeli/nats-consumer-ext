@@ -43,13 +43,16 @@ type natsConsumer struct {
 	Password    string         `toml:"password"`
 	Credentials string         `toml:"credentials"`
 
-	NameOverride   string   `toml:"name_override"`
-	DataFormat     string   `toml:"data_format"`
-	TagKeys        []string `toml:"tag_keys"`
-	JsonQuery      string   `toml:"json_query"`
-	JsonTimeFormat string   `toml:"json_time_format"`
-	JsonTimeKey    string   `toml:"json_time_key"`
-	JsonNameKey    string   `toml:"json_name_key"`
+	NameOverride     string   `toml:"name_override"`
+	DataFormat       string   `toml:"data_format"`
+	JsonStrict       bool     `toml:"json_strict"`
+	TagKeys          []string `toml:"tag_keys"`
+	JsonQuery        string   `toml:"json_query"`
+	JsonTimeFormat   string   `toml:"json_time_format"`
+	JsonStringFields []string `toml:"json_string_fields"`
+	JsonTimeKey      string   `toml:"json_time_key"`
+	JsonTimezone     string   `toml:"json_timezone"`
+	JsonNameKey      string   `toml:"json_name_key"`
 
 	tls.ClientConfig
 
@@ -156,12 +159,15 @@ func (n *natsConsumer) natsErrHandler(c *nats.Conn, s *nats.Subscription, e erro
 func (n *natsConsumer) Init() (err error) {
 	n.serializer = influx.NewSerializer()
 	n.parserConfig = &parsers.Config{
-		DataFormat:     n.DataFormat,
-		TagKeys:        n.TagKeys,
-		JSONNameKey:    n.JsonNameKey,
-		JSONQuery:      n.JsonQuery,
-		JSONTimeFormat: n.JsonTimeFormat,
-		JSONTimeKey:    n.JsonTimeKey,
+		DataFormat:       n.DataFormat,
+		JSONStrict:       n.JsonStrict,
+		TagKeys:          n.TagKeys,
+		JSONNameKey:      n.JsonNameKey,
+		JSONQuery:        n.JsonQuery,
+		JSONStringFields: n.JsonStringFields,
+		JSONTimeFormat:   n.JsonTimeFormat,
+		JSONTimeKey:      n.JsonTimeKey,
+		JSONTimezone:     n.JsonTimezone,
 	}
 
 	n.parser, err = parsers.NewParser(n.parserConfig)
