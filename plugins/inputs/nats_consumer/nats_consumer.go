@@ -251,7 +251,6 @@ func (n *natsConsumer) Start(acc telegraf.Accumulator) error {
 // telegraf metrics.
 func (n *natsConsumer) receiver(ctx context.Context) {
 	sem := make(semaphore, n.MaxUndeliveredMessages)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -296,6 +295,7 @@ func (n *natsConsumer) receiver(ctx context.Context) {
 					}
 					fmt.Printf("%s", out)
 				}
+                                <-sem
 			}
 		}
 	}
